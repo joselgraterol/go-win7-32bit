@@ -1,6 +1,6 @@
 module win7
 
-go 1.25.5
+go 1.20
 
 require modernc.org/sqlite v1.24.0
 
