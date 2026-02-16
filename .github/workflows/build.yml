@@ -1,0 +1,34 @@
+name: Build Go App for Win7 32-bit
+
+on: [push, workflow_dispatch]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest # Linux runners are much faster for Go builds!
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Go 1.20
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.20' # The magic version for Windows 7 support
+
+      - name: Download Dependencies
+        run: go mod download
+
+      - name: Build for Windows 32-bit
+        env:
+          GOOS: windows
+          GOARCH: 386
+          CGO_ENABLED: 0 # Ensures a pure, standalone executable
+        # The -H windowsgui flag hides the console window
+        # The -s -w flags shrink the file size
+        run: |
+          go build -ldflags="-H windowsgui -s -w" -o MyDesktopApp.exe main.go
+
+      - name: Upload EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: MyDesktopApp-Win7-32bit
+          path: MyDesktopApp.exe
