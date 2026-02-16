@@ -1,46 +1,20 @@
 package main
 
 import (
-	"database/sql"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"sync"
 	"time"
-
-	_ "modernc.org/sqlite" // Pure Go SQLite driver (No CGO required!)
 )
 
 var (
 	lastHeartbeat time.Time
 	mu            sync.Mutex
 	port          = "8888"
-	dbName        = "database.db"
 )
-
-func initDB() *sql.DB {
-	// Put the DB in the same folder as the executable
-	ex, err := os.Executable()
-	if err != nil {
-		panic(err)
-	}
-	dbPath := filepath.Join(filepath.Dir(ex), dbName)
-
-	db, err := sql.Open("sqlite", dbPath)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	createTableSQL := `CREATE TABLE IF NOT EXISTS logs (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP);`
-	_, err = db.Exec(createTableSQL)
-	if err != nil {
-		log.Fatal(err)
-	}
-	return db
-}
 
 func monitorHeartbeat() {
 	// Give the app 10 seconds to open the browser before we start strictly checking
@@ -69,25 +43,10 @@ func heartbeatHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func indexHandler(db *sql.DB) http.HandlerFunc {
+func indexHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
 			http.NotFound(w, r)
-			return
-		}
-
-		// Log the visit
-		_, err := db.Exec("INSERT INTO logs DEFAULT VALUES")
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		// Count launches
-		var count int
-		err = db.QueryRow("SELECT COUNT(*) FROM logs").Scan(&count)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
@@ -118,13 +77,12 @@ func indexHandler(db *sql.DB) http.HandlerFunc {
 		</head>
 		<body>
 			<div class="card">
-				<h1>Go + SQLite Desktop App</h1>
+				<h1>Go Desktop App</h1>
 				<p>Running entirely from a single executable!</p>
-				<div class="counter">Total Launches: %d</div>
 				<p><small>Close this tab/browser to exit the application.</small></p>
 			</div>
 		</body>
-		</html>`, count)
+		</html>`)
 
 		w.Header().Set("Content-Type", "text/html")
 		w.Write([]byte(html))
@@ -132,29 +90,25 @@ func indexHandler(db *sql.DB) http.HandlerFunc {
 }
 
 func main() {
-	// 1. Initialize DB
-	db := initDB()
-	defer db.Close()
-
-	// 2. Setup initial heartbeat
+	// Setup initial heartbeat
 	mu.Lock()
 	lastHeartbeat = time.Now()
 	mu.Unlock()
 
-	// 3. Start heartbeat monitor in the background (Goroutine)
+	// Start heartbeat monitor in the background (Goroutine)
 	go monitorHeartbeat()
 
-	// 4. Register Routes
+	// Register Routes
 	http.HandleFunc("/heartbeat", heartbeatHandler)
-	http.HandleFunc("/", indexHandler(db))
+	http.HandleFunc("/", indexHandler())
 
-	// 5. Open Browser after a short delay (Windows specific command)
+	// Open Browser after a short delay (Windows specific command)
 	go func() {
 		time.Sleep(1 * time.Second)
 		url := "http://localhost:" + port
 		exec.Command("cmd", "/c", "start", url).Start()
 	}()
 
-	// 6. Start Server
+	// Start Server
 	log.Fatal(http.ListenAndServe("127.0.0.1:"+port, nil))
 }
